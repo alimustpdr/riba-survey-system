@@ -86,4 +86,4 @@ VALUES (
 ## Notes
 - This is an initial scaffold; validation, security hardening, and admin features can be expanded.
 - `storage/` is kept for logs/cache.
-Initial project structure
+Initial project structure   u
