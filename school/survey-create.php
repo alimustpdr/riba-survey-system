@@ -1,6 +1,9 @@
 <?php
 $page_title = 'Yeni Anket Oluştur';
 require_once 'header.php';
+require_once __DIR__ . '/../includes/settings.php';
+
+$enabled_kademes = get_enabled_kademes_for_school((int)$user['school_id']);
 
 // Form gönderildi mi?
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -65,12 +68,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Form şablonlarını çek
-$stmt = $pdo->query("SELECT * FROM form_templates ORDER BY kademe, role");
+$placeholders = implode(',', array_fill(0, count($enabled_kademes), '?'));
+$stmt = $pdo->prepare("SELECT * FROM form_templates WHERE kademe IN ($placeholders) ORDER BY kademe, role");
+$stmt->execute($enabled_kademes);
 $form_templates = $stmt->fetchAll();
 
 // Sınıfları çek
-$stmt = $pdo->prepare("SELECT * FROM classes WHERE school_id = ? AND status = 'active' ORDER BY kademe, name");
-$stmt->execute([$user['school_id']]);
+$stmt = $pdo->prepare("SELECT * FROM classes WHERE school_id = ? AND status = 'active' AND kademe IN ($placeholders) ORDER BY kademe, name");
+$stmt->execute(array_merge([$user['school_id']], $enabled_kademes));
 $classes = $stmt->fetchAll();
 
 // Varsayılan cinsiyet ayarını çek

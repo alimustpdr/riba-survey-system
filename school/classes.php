@@ -1,6 +1,15 @@
 <?php
 $page_title = 'Sınıf Yönetimi';
 require_once 'header.php';
+require_once __DIR__ . '/../includes/settings.php';
+
+$enabled_kademes = get_enabled_kademes_for_school((int)$user['school_id']);
+$kademe_labels = [
+    'okuloncesi' => 'Okul Öncesi',
+    'ilkokul' => 'İlkokul',
+    'ortaokul' => 'Ortaokul',
+    'lise' => 'Lise',
+];
 
 // Form işlemleri
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -18,6 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (empty($name) || empty($kademe)) {
                 set_flash_message('Lütfen tüm alanları doldurun!', 'danger');
+            } elseif (!in_array($kademe, $enabled_kademes, true)) {
+                set_flash_message('Bu kademe paketinize dahil değil!', 'danger');
             } else {
                 $stmt = $pdo->prepare("INSERT INTO classes (school_id, name, kademe, student_count, status) VALUES (?, ?, ?, ?, ?)");
                 if ($stmt->execute([$user['school_id'], $name, $kademe, $student_count, $status])) {
@@ -37,6 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             if (empty($name) || empty($kademe) || $id <= 0) {
                 set_flash_message('Geçersiz veri!', 'danger');
+            } elseif (!in_array($kademe, $enabled_kademes, true)) {
+                set_flash_message('Bu kademe paketinize dahil değil!', 'danger');
             } else {
                 $stmt = $pdo->prepare("UPDATE classes SET name = ?, kademe = ?, student_count = ?, status = ? WHERE id = ? AND school_id = ?");
                 if ($stmt->execute([$name, $kademe, $student_count, $status, $id, $user['school_id']])) {
@@ -152,10 +165,9 @@ $csrf_token = generate_csrf_token();
                         <label class="form-label">Kademe</label>
                         <select name="kademe" class="form-select" required>
                             <option value="">Seçiniz...</option>
-                            <option value="okuloncesi">Okul Öncesi</option>
-                            <option value="ilkokul">İlkokul</option>
-                            <option value="ortaokul">Ortaokul</option>
-                            <option value="lise">Lise</option>
+                            <?php foreach ($enabled_kademes as $k): ?>
+                                <option value="<?= e($k) ?>"><?= e($kademe_labels[$k] ?? $k) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="mb-3">
@@ -199,10 +211,9 @@ $csrf_token = generate_csrf_token();
                     <div class="mb-3">
                         <label class="form-label">Kademe</label>
                         <select name="kademe" id="edit_kademe" class="form-select" required>
-                            <option value="okuloncesi">Okul Öncesi</option>
-                            <option value="ilkokul">İlkokul</option>
-                            <option value="ortaokul">Ortaokul</option>
-                            <option value="lise">Lise</option>
+                            <?php foreach ($enabled_kademes as $k): ?>
+                                <option value="<?= e($k) ?>"><?= e($kademe_labels[$k] ?? $k) ?></option>
+                            <?php endforeach; ?>
                         </select>
                     </div>
                     <div class="mb-3">
