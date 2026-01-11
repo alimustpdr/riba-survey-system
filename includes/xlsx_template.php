@@ -156,7 +156,11 @@ class XlsxTemplateFiller {
             if ($xml === false) {
                 throw new RuntimeException('Failed to serialize worksheet xml.');
             }
-            $this->zip->setFromString($path, $xml);
+            // ZipArchive doesn't have setFromString; overwrite by delete+add
+            @$this->zip->deleteName($path);
+            if ($this->zip->addFromString($path, $xml) === false) {
+                throw new RuntimeException('Failed to write worksheet xml into XLSX.');
+            }
         }
 
         $this->zip->close();
