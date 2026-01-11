@@ -3,7 +3,8 @@
 
 // Config dosyasını yükle
 if (!file_exists(__DIR__ . '/../config/config.php')) {
-    header('Location: install.php');
+    // Use absolute path so this works from nested routes (e.g. /admin/*, /school/*)
+    header('Location: /install.php');
     exit;
 }
 
