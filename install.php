@@ -115,9 +115,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('refresh:2;url=login.php');
                 
             } catch (PDOException $e) {
-                $error = 'Veritabanı hatası: ' . $e->getMessage();
+                $errorMsg = $e->getMessage();
+                
+                // Foreign key constraint hatası için özel mesaj
+                if (strpos($errorMsg, '1005') !== false || strpos($errorMsg, 'errno: 150') !== false || strpos($errorMsg, 'Foreign key constraint') !== false) {
+                    $error = 'Veritabanı şema hatası: Tablolar oluşturulurken bir hata oluştu. ';
+                    $error .= 'Kurulum yarıda kaldıysa lütfen veritabanını tamamen silin ve kurulumu yeniden başlatın. ';
+                    $error .= '<br><br><strong>Çözüm:</strong><br>';
+                    $error .= '1. CyberPanel\'den veritabanını silin<br>';
+                    $error .= '2. Aynı isimde yeni bir veritabanı oluşturun<br>';
+                    $error .= '3. Kurulumu tekrar çalıştırın<br>';
+                    $error .= '<br><small>Teknik detay: ' . htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8') . '</small>';
+                } else {
+                    $error = 'Veritabanı hatası: ' . htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8');
+                    $error .= '<br><br><strong>Not:</strong> Eğer kurulum yarıda kaldıysa, veritabanını tamamen silip yeniden oluşturmanız önerilir.';
+                }
             } catch (Exception $e) {
-                $error = 'Hata: ' . $e->getMessage();
+                $error = 'Hata: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
             }
         }
     }
@@ -180,6 +194,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             </label>
                         </div>
                         <small class="text-muted">CyberPanel'de veritabanını zaten oluşturduysanız bu seçeneği işaretleyin</small>
+                    </div>
+                    
+                    <div class="alert alert-info" style="font-size: 0.9em;">
+                        <i class="fas fa-info-circle"></i> <strong>Önemli Not:</strong> Eğer kurulum sırasında hata alırsanız, veritabanını CyberPanel'den tamamen silip yeniden oluşturmanız ve kurulumu tekrar çalıştırmanız önerilir.
                     </div>
                     
                     <div class="row">
