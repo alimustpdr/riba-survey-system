@@ -33,7 +33,10 @@ function has_role($role) {
 // Require login (redirect to login if not logged in)
 function require_login() {
     if (!is_logged_in()) {
-        header('Location: /login.php');
+        // Get the base path
+        $base_path = dirname($_SERVER['SCRIPT_NAME']);
+        $login_path = rtrim($base_path, '/') . '/login.php';
+        header('Location: ' . $login_path);
         exit;
     }
 }
