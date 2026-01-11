@@ -181,6 +181,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $safeClass = preg_replace('/[^a-zA-Z0-9_-]+/', '_', (string)$class['name']);
     $filename = 'riba_' . $kademe . '_sinif_sonuc_' . $safeClass . '.xlsx';
 
+    // Prevent any buffered output from corrupting the XLSX
+    while (ob_get_level() > 0) {
+        @ob_end_clean();
+    }
+
     header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     header('Content-Length: ' . filesize($out));
