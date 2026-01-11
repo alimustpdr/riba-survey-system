@@ -56,18 +56,6 @@ CREATE TABLE IF NOT EXISTS classes (
     INDEX idx_kademe (kademe)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Anket Hedef Sınıfları
-CREATE TABLE IF NOT EXISTS survey_target_classes (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    survey_id INT NOT NULL,
-    class_id INT NULL,
-    is_all_classes BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
-    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
-    INDEX idx_survey (survey_id)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 -- Form Şablonları (11 Adet Standart RİBA Formu)
 CREATE TABLE IF NOT EXISTS form_templates (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -112,6 +100,18 @@ CREATE TABLE IF NOT EXISTS surveys (
     FOREIGN KEY (created_by) REFERENCES users(id),
     INDEX idx_token (link_token),
     INDEX idx_school (school_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Anket Hedef Sınıfları
+CREATE TABLE IF NOT EXISTS survey_target_classes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    survey_id INT NOT NULL,
+    class_id INT NULL,
+    is_all_classes BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    INDEX idx_survey (survey_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Cevaplar Tablosu

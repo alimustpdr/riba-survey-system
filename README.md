@@ -166,6 +166,20 @@ Her form 10 soru içerir ve sorular A/B seçeneklidir. Katılımcılar her sorud
 - MySQL servisinin çalıştığından emin olun
 - Kullanıcının veritabanına erişim yetkisi olduğunu doğrulayın
 
+**"Foreign key constraint" veya "errno: 150" hatası**:
+- Bu hata, veritabanı şeması yüklenirken tablo sıralama sorununu gösterir
+- Çözüm adımları:
+  1. CyberPanel'den veritabanını tamamen silin
+  2. Aynı isimde yeni bir veritabanı oluşturun
+  3. Kurulum sihirbazını tekrar çalıştırın
+- Not: Bu sorun güncel sürümde düzeltilmiştir
+
+**Kurulum yarıda kaldı / Bazı tablolar oluşmuş**:
+- Veritabanını CyberPanel'den tamamen silin
+- Yeni bir veritabanı oluşturun
+- Kurulumu baştan çalıştırın
+- Yarım kalmış kurulum üzerine devam etmeyin
+
 **"Session hatası"**:
 - PHP session ayarlarını kontrol edin
 - Geçici dizin izinlerini kontrol edin
