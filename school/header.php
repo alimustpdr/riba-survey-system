@@ -56,6 +56,9 @@ if (!$school) {
                     <a class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'survey-create.php' ? 'active' : '' ?>" href="/school/survey-create.php">
                         <i class="fas fa-plus-circle"></i> Yeni Anket
                     </a>
+                    <a class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'form-templates.php' ? 'active' : '' ?>" href="/school/form-templates.php">
+                        <i class="fas fa-clipboard-list"></i> Form Şablonları
+                    </a>
                     <hr class="text-white">
                     <a class="nav-link" href="/logout.php">
                         <i class="fas fa-sign-out-alt"></i> Çıkış Yap
