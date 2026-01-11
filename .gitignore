@@ -1,0 +1,46 @@
+# Configuration files
+config/config.php
+config/.env
+config/.installed
+
+# Storage and logs
+storage/logs/*.log
+storage/cache/*
+storage/temp/*
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.bak
+*.old
+*.cache
+
+# Dependencies (if using Composer in future)
+vendor/
+composer.lock
+
+# Node modules (if using npm in future)
+node_modules/
+package-lock.json
+
+# OS generated files
+._.DS_Store
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+
+# Keep directory structure
+!storage/logs/.gitkeep
+!storage/cache/.gitkeep
+!storage/temp/.gitkeep
