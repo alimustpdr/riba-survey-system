@@ -2,12 +2,13 @@
 $page_title = 'Form Şablonları';
 require_once 'header.php';
 require_once __DIR__ . '/../includes/riba_instructions.php';
+require_once __DIR__ . '/../includes/settings.php';
 
 $kademe = $_GET['kademe'] ?? '';
 $role = $_GET['role'] ?? '';
 $template_id = (int)($_GET['id'] ?? 0);
 
-$kademes = ['okuloncesi', 'ilkokul', 'ortaokul', 'lise'];
+$kademes = get_enabled_kademes_for_school((int)$user['school_id']);
 $roles = ['ogrenci', 'veli', 'ogretmen'];
 
 // Template detail view
@@ -18,6 +19,11 @@ if ($template_id > 0) {
 
     if (!$template) {
         set_flash_message('Form şablonu bulunamadı!', 'danger');
+        header('Location: form-templates.php');
+        exit;
+    }
+    if (!in_array($template['kademe'], $kademes, true)) {
+        set_flash_message('Bu kademe paketinize dahil değil.', 'danger');
         header('Location: form-templates.php');
         exit;
     }
@@ -94,9 +100,10 @@ if (in_array($role, $roles, true)) {
     $where[] = "role = ?";
     $params[] = $role;
 }
-$sql = "SELECT * FROM form_templates";
+$sql = "SELECT * FROM form_templates WHERE kademe IN (" . implode(',', array_fill(0, count($kademes), '?')) . ")";
+$params = array_merge($kademes, $params);
 if (!empty($where)) {
-    $sql .= " WHERE " . implode(" AND ", $where);
+    $sql .= " AND " . implode(" AND ", $where);
 }
 $sql .= " ORDER BY kademe, role";
 
