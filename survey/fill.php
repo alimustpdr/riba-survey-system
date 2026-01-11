@@ -1,5 +1,7 @@
 <?php
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/link.php';
+require_once __DIR__ . '/../includes/riba_instructions.php';
 
 // Token kontrolü
 $token = $_GET['token'] ?? '';
@@ -32,6 +34,51 @@ $stmt = $pdo->prepare("
 $stmt->execute([$survey['form_template_id']]);
 $questions = $stmt->fetchAll();
 
+// Class context (required for class-specific flow)
+$class_id = isset($_GET['c']) ? (int)$_GET['c'] : (isset($_POST['c']) ? (int)$_POST['c'] : 0);
+$sig = $_GET['sig'] ?? ($_POST['sig'] ?? '');
+$class = null;
+
+if ($class_id > 0) {
+    // If class id is provided without signature (e.g. user selected from dropdown),
+    // validate it then redirect to the signed link.
+    if ($sig === '') {
+        $stmt = $pdo->prepare("
+            SELECT c.id
+            FROM survey_target_classes stc
+            JOIN classes c ON c.id = stc.class_id
+            WHERE stc.survey_id = ? AND stc.class_id = ? AND stc.is_all_classes = FALSE AND c.school_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$survey['id'], $class_id, $survey['school_id']]);
+        $ok = $stmt->fetch();
+        if (!$ok) {
+            die('Bu sınıf bu ankete ait değil!');
+        }
+        $signed = sign_survey_class_token($survey['link_token'], $class_id);
+        $redir = 'fill.php?token=' . urlencode($survey['link_token']) . '&c=' . $class_id . '&sig=' . urlencode($signed);
+        header('Location: ' . $redir);
+        exit;
+    }
+
+    if (!verify_survey_class_token($survey['link_token'], $class_id, (string)$sig)) {
+        die('Geçersiz veya değiştirilmiş sınıf linki!');
+    }
+    // Ensure class belongs to this survey and school
+    $stmt = $pdo->prepare("
+        SELECT c.*
+        FROM survey_target_classes stc
+        JOIN classes c ON c.id = stc.class_id
+        WHERE stc.survey_id = ? AND stc.class_id = ? AND stc.is_all_classes = FALSE AND c.school_id = ?
+        LIMIT 1
+    ");
+    $stmt->execute([$survey['id'], $class_id, $survey['school_id']]);
+    $class = $stmt->fetch();
+    if (!$class) {
+        die('Bu sınıf bu ankete ait değil!');
+    }
+}
+
 // Form gönderildi mi?
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $gender = isset($_POST['gender']) ? $_POST['gender'] : null;
@@ -45,20 +92,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     
+    if (!$class) {
+        $error = 'Lütfen sınıf seçiniz (link sınıfa özel olmalıdır)!';
+    }
     // Tüm sorular cevaplanmış mı?
     if (count($answers) !== count($questions)) {
         $error = 'Lütfen tüm soruları cevaplayın!';
-    } else {
+    } elseif (!$error) {
         try {
             $pdo->beginTransaction();
             
             // Yanıtı kaydet
             $stmt = $pdo->prepare("
-                INSERT INTO responses (survey_id, gender, ip_address, user_agent, answers) 
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO responses (survey_id, class_name, gender, ip_address, user_agent, answers) 
+                VALUES (?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $survey['id'],
+                $class ? $class['name'] : null,
                 $gender,
                 $_SERVER['REMOTE_ADDR'] ?? null,
                 $_SERVER['HTTP_USER_AGENT'] ?? null,
@@ -111,6 +162,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php if ($survey['description']): ?>
                     <p class="mb-0"><?= htmlspecialchars($survey['description'], ENT_QUOTES, 'UTF-8') ?></p>
                 <?php endif; ?>
+                <div class="mt-3 p-2 rounded" style="background: rgba(255,255,255,0.15);">
+                    <div style="white-space: pre-line; font-size: 0.95rem;">
+                        <?= htmlspecialchars(get_riba_instructions_text($survey['role']), ENT_QUOTES, 'UTF-8') ?>
+                    </div>
+                </div>
                 <hr class="my-3 border-white">
                 <div class="d-flex justify-content-center gap-3">
                     <span class="badge bg-light text-dark"><?= htmlspecialchars($survey['kademe'], ENT_QUOTES, 'UTF-8') ?></span>
@@ -127,6 +183,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
                 
                 <form method="POST" id="surveyForm">
+                    <?php if ($class): ?>
+                        <input type="hidden" name="c" value="<?= (int)$class['id'] ?>">
+                        <input type="hidden" name="sig" value="<?= htmlspecialchars((string)$sig, ENT_QUOTES, 'UTF-8') ?>">
+                        <div class="alert alert-info">
+                            <strong>Sınıf:</strong> <?= htmlspecialchars($class['name'], ENT_QUOTES, 'UTF-8') ?>
+                        </div>
+                    <?php else: ?>
+                        <?php
+                        // If no class in link, show selection (backward compatible).
+                        $stmt = $pdo->prepare("
+                            SELECT c.id, c.name, c.kademe
+                            FROM survey_target_classes stc
+                            JOIN classes c ON c.id = stc.class_id
+                            WHERE stc.survey_id = ? AND stc.is_all_classes = FALSE
+                            ORDER BY c.kademe, c.name
+                        ");
+                        $stmt->execute([$survey['id']]);
+                        $target_classes = $stmt->fetchAll();
+                        ?>
+                        <div class="question-card">
+                            <label class="form-label"><strong>Sınıf Seçimi</strong></label>
+                            <select class="form-select" id="classSelect" onchange="applyClassLink()">
+                                <option value="">Sınıf seçiniz...</option>
+                                <?php foreach ($target_classes as $tc): ?>
+                                    <option value="<?= (int)$tc['id'] ?>"><?= htmlspecialchars($tc['name'], ENT_QUOTES, 'UTF-8') ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                            <small class="text-muted">Bu anket sınıfa özeldir. Lütfen doğru sınıfı seçin.</small>
+                        </div>
+                    <?php endif; ?>
+
                     <?php if ($survey['gender_field_enabled']): ?>
                         <div class="question-card">
                             <label class="form-label"><strong>Cinsiyetiniz (Opsiyonel)</strong></label>
@@ -187,6 +274,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        function applyClassLink() {
+            const sel = document.getElementById('classSelect');
+            if (!sel) return;
+            const classId = parseInt(sel.value || '0', 10);
+            if (!classId) return;
+            // Redirect to server, it will generate a signed link.
+            const token = <?= json_encode((string)$survey['link_token']) ?>;
+            window.location.href = window.location.pathname + '?token=' + encodeURIComponent(token) + '&c=' + classId;
+        }
+
         // Add checked class to option labels for better browser compatibility
         document.addEventListener('DOMContentLoaded', function() {
             const radioInputs = document.querySelectorAll('input[type="radio"]');

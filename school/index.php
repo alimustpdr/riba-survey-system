@@ -98,9 +98,9 @@ $active_surveys = $stmt->fetchAll();
                                         </td>
                                         <td><?= date('d.m.Y', strtotime($survey['created_at'])) ?></td>
                                         <td>
-                                            <a href="/survey/fill.php?token=<?= e($survey['link_token']) ?>" 
-                                               class="btn btn-sm btn-primary" target="_blank">
-                                                <i class="fas fa-external-link-alt"></i> Linki Aç
+                                            <a href="/school/survey-links.php?survey_id=<?= (int)$survey['id'] ?>" 
+                                               class="btn btn-sm btn-primary">
+                                                <i class="fas fa-link"></i> Sınıf Linkleri
                                             </a>
                                         </td>
                                     </tr>
