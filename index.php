@@ -1,6 +1,13 @@
 <?php
 require_once 'includes/auth.php';
 
+// Modern UI varsayılan olsun (additive).
+// Eski ana sayfayı görmek için: /index.php?classic=1
+if (!isset($_GET['classic']) && is_dir(__DIR__ . '/modern')) {
+    header('Location: /modern/');
+    exit;
+}
+
 // Giriş yaptıysa role göre yönlendir
 if (is_logged_in()) {
     if ($_SESSION['user_role'] === 'super_admin') {
