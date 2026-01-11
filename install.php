@@ -248,6 +248,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $config_content .= "define('BASE_PATH', dirname(__FILE__) . '/..');\n\n";
                 $config_content .= "// Güvenlik Ayarları\n";
                 $config_content .= "define('SESSION_LIFETIME', 3600); // 1 saat\n";
+                // Used to sign class-specific links
+                $config_content .= "define('APP_SECRET', '" . bin2hex(random_bytes(32)) . "');\n";
                 $config_content .= "?>\n";
                 
                 if (!is_dir('config')) {

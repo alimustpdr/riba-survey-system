@@ -71,12 +71,8 @@ $csrf_token = generate_csrf_token();
                                         <td><?= date('d.m.Y H:i', strtotime($survey['created_at'])) ?></td>
                                         <td>
                                             <?php if ($survey['status'] === 'active'): ?>
-                                                <button class="btn btn-sm btn-success" onclick="copyLink('<?= e($survey['link_token']) ?>')">
-                                                    <i class="fas fa-copy"></i> Link
-                                                </button>
-                                                <a href="/survey/fill.php?token=<?= e($survey['link_token']) ?>" 
-                                                   class="btn btn-sm btn-primary" target="_blank">
-                                                    <i class="fas fa-external-link-alt"></i>
+                                                <a class="btn btn-sm btn-success" href="/school/survey-links.php?survey_id=<?= (int)$survey['id'] ?>">
+                                                    <i class="fas fa-link"></i> Sınıf Linkleri
                                                 </a>
                                             <?php endif; ?>
                                         </td>
@@ -90,54 +86,5 @@ $csrf_token = generate_csrf_token();
         </div>
     </div>
 </div>
-
-<!-- Link modal -->
-<div class="modal fade" id="linkModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Anket Linki</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <p>Bu linki katılımcılarla paylaşın:</p>
-                <div class="input-group">
-                    <input type="text" class="form-control" id="surveyLink" readonly>
-                    <button class="btn btn-primary" onclick="copyToClipboard()">
-                        <i class="fas fa-copy"></i> Kopyala
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-function copyLink(token) {
-    const url = window.location.origin + '/survey/fill.php?token=' + token;
-    document.getElementById('surveyLink').value = url;
-    new bootstrap.Modal(document.getElementById('linkModal')).show();
-}
-
-function copyToClipboard() {
-    const linkInput = document.getElementById('surveyLink');
-    linkInput.select();
-    
-    // Modern Clipboard API ile kopyalama
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(linkInput.value).then(() => {
-            alert('Link kopyalandı!');
-        }).catch(() => {
-            // Fallback to execCommand
-            document.execCommand('copy');
-            alert('Link kopyalandı!');
-        });
-    } else {
-        // Fallback for older browsers
-        document.execCommand('copy');
-        alert('Link kopyalandı!');
-    }
-}
-</script>
 
 <?php require_once 'footer.php'; ?>

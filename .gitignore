@@ -23,3 +23,6 @@ Thumbs.db
 # Temporary files
 tmp/
 temp/
+
+# Local tooling (do not commit)
+.tmp_xlsx_parser/

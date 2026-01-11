@@ -11,12 +11,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $title = trim($_POST['title'] ?? '');
         $description = trim($_POST['description'] ?? '');
         $form_template_id = (int)($_POST['form_template_id'] ?? 0);
-        $target_type = $_POST['target_type'] ?? 'all';
+        // RİBA akışında linkler sınıfa özel olmalı (Senaryo A)
+        $target_type = $_POST['target_type'] ?? 'specific';
         $target_classes = $_POST['target_classes'] ?? [];
         $gender_field_enabled = isset($_POST['gender_field_enabled']) ? 1 : 0;
         
         if (empty($title) || $form_template_id <= 0) {
             set_flash_message('Lütfen tüm zorunlu alanları doldurun!', 'danger');
+        } elseif ($target_type !== 'specific' || empty($target_classes)) {
+            set_flash_message('Lütfen en az bir hedef sınıf seçin!', 'danger');
         } else {
             try {
                 $pdo->beginTransaction();
@@ -42,20 +45,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 $survey_id = $pdo->lastInsertId();
                 
-                // Hedef sınıfları kaydet
-                if ($target_type === 'all') {
-                    $stmt = $pdo->prepare("INSERT INTO survey_target_classes (survey_id, is_all_classes) VALUES (?, TRUE)");
-                    $stmt->execute([$survey_id]);
-                } else {
-                    foreach ($target_classes as $class_id) {
-                        $stmt = $pdo->prepare("INSERT INTO survey_target_classes (survey_id, class_id, is_all_classes) VALUES (?, ?, FALSE)");
-                        $stmt->execute([$survey_id, (int)$class_id]);
-                    }
+                // Hedef sınıfları kaydet (sınıfa özel link üretimi için)
+                foreach ($target_classes as $class_id) {
+                    $stmt = $pdo->prepare("INSERT INTO survey_target_classes (survey_id, class_id, is_all_classes) VALUES (?, ?, FALSE)");
+                    $stmt->execute([$survey_id, (int)$class_id]);
                 }
                 
                 $pdo->commit();
                 set_flash_message('Anket başarıyla oluşturuldu!', 'success');
-                header('Location: surveys.php');
+                header('Location: survey-links.php?survey_id=' . (int)$survey_id);
                 exit;
                 
             } catch (Exception $e) {
@@ -155,24 +153,14 @@ $csrf_token = generate_csrf_token();
                     <div class="mb-3">
                         <div class="form-check">
                             <input class="form-check-input" type="radio" name="target_type" 
-                                   id="target_all" value="all" checked onchange="toggleClassSelection()">
-                            <label class="form-check-label" for="target_all">
-                                <strong>Tüm sınıflar</strong> - Link herkese açık, sınırsız katılım
-                            </label>
-                        </div>
-                    </div>
-                    
-                    <div class="mb-3">
-                        <div class="form-check">
-                            <input class="form-check-input" type="radio" name="target_type" 
-                                   id="target_specific" value="specific" onchange="toggleClassSelection()">
+                                   id="target_specific" value="specific" checked onchange="toggleClassSelection()">
                             <label class="form-check-label" for="target_specific">
-                                <strong>Belirli sınıflar</strong>
+                                <strong>Belirli sınıflar</strong> - Her sınıf için ayrı link üretilecek
                             </label>
                         </div>
                     </div>
                     
-                    <div class="mb-3" id="classSelection" style="display:none;">
+                    <div class="mb-3" id="classSelection">
                         <label class="form-label">Hedef Sınıflar</label>
                         <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
                             <?php if (!empty($classes)): ?>
@@ -244,9 +232,9 @@ $csrf_token = generate_csrf_token();
 
 <script>
 function toggleClassSelection() {
-    const specificRadio = document.getElementById('target_specific');
+    // Only 'specific' is supported; keep for backward compatibility
     const classSelection = document.getElementById('classSelection');
-    classSelection.style.display = specificRadio.checked ? 'block' : 'none';
+    if (classSelection) classSelection.style.display = 'block';
 }
 </script>
 
