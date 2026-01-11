@@ -15,6 +15,157 @@ if (!isset($_SESSION['csrf_token'])) {
 $error = '';
 $success = '';
 
+/**
+ * Split SQL into executable statements safely.
+ * Handles semicolons inside strings and SQL comments.
+ */
+function split_sql_statements(string $sql): array {
+    $statements = [];
+    $current = '';
+
+    $len = strlen($sql);
+    $inSingle = false;
+    $inDouble = false;
+    $inBacktick = false;
+    $inLineComment = false;
+    $inBlockComment = false;
+
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $sql[$i];
+        $next = ($i + 1 < $len) ? $sql[$i + 1] : '';
+
+        // End line comment at newline
+        if ($inLineComment) {
+            $current .= $ch;
+            if ($ch === "\n") {
+                $inLineComment = false;
+            }
+            continue;
+        }
+
+        // End block comment
+        if ($inBlockComment) {
+            $current .= $ch;
+            if ($ch === '*' && $next === '/') {
+                $current .= $next;
+                $i++;
+                $inBlockComment = false;
+            }
+            continue;
+        }
+
+        // Start comments (only when not inside quotes)
+        if (!$inSingle && !$inDouble && !$inBacktick) {
+            if ($ch === '-' && $next === '-') {
+                // Treat "--" as line comment when followed by space/tab or endline
+                $next2 = ($i + 2 < $len) ? $sql[$i + 2] : '';
+                if ($next2 === ' ' || $next2 === "\t" || $next2 === "\r" || $next2 === "\n") {
+                    $current .= $ch . $next;
+                    $i++;
+                    $inLineComment = true;
+                    continue;
+                }
+            }
+            if ($ch === '#') {
+                $current .= $ch;
+                $inLineComment = true;
+                continue;
+            }
+            if ($ch === '/' && $next === '*') {
+                $current .= $ch . $next;
+                $i++;
+                $inBlockComment = true;
+                continue;
+            }
+        }
+
+        // Quote state toggles (ignore when escaped)
+        if ($inSingle) {
+            $current .= $ch;
+            if ($ch === "\\") {
+                // Escape next char
+                if ($next !== '') {
+                    $current .= $next;
+                    $i++;
+                }
+                continue;
+            }
+            if ($ch === "'" && $next === "'") {
+                // SQL escaped single quote ''
+                $current .= $next;
+                $i++;
+                continue;
+            }
+            if ($ch === "'") {
+                $inSingle = false;
+            }
+            continue;
+        }
+        if ($inDouble) {
+            $current .= $ch;
+            if ($ch === "\\") {
+                if ($next !== '') {
+                    $current .= $next;
+                    $i++;
+                }
+                continue;
+            }
+            if ($ch === '"' && $next === '"') {
+                $current .= $next;
+                $i++;
+                continue;
+            }
+            if ($ch === '"') {
+                $inDouble = false;
+            }
+            continue;
+        }
+        if ($inBacktick) {
+            $current .= $ch;
+            if ($ch === '`') {
+                $inBacktick = false;
+            }
+            continue;
+        }
+
+        // Not currently in any quote/comment
+        if ($ch === "'") {
+            $inSingle = true;
+            $current .= $ch;
+            continue;
+        }
+        if ($ch === '"') {
+            $inDouble = true;
+            $current .= $ch;
+            continue;
+        }
+        if ($ch === '`') {
+            $inBacktick = true;
+            $current .= $ch;
+            continue;
+        }
+
+        // Statement delimiter
+        if ($ch === ';') {
+            $trimmed = trim($current);
+            if ($trimmed !== '') {
+                $statements[] = $trimmed;
+            }
+            $current = '';
+            continue;
+        }
+
+        $current .= $ch;
+    }
+
+    $trimmed = trim($current);
+    if ($trimmed !== '') {
+        $statements[] = $trimmed;
+    }
+
+    return $statements;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF koruması
     if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
@@ -61,8 +212,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Tabloları oluştur
                 $schema = file_get_contents('database/schema.sql');
-                // SQL komutlarını noktalı virgüle göre ayır ve tek tek çalıştır
-                $statements = array_filter(array_map('trim', explode(';', $schema)));
+                // SQL komutlarını güvenli biçimde ayır ve tek tek çalıştır
+                $statements = split_sql_statements($schema);
                 foreach ($statements as $statement) {
                     if (!empty($statement)) {
                         $pdo->exec($statement);
@@ -72,7 +223,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Form verilerini yükle
                 if (file_exists('database/forms_data.sql')) {
                     $forms_data = file_get_contents('database/forms_data.sql');
-                    $statements = array_filter(array_map('trim', explode(';', $forms_data)));
+                    $statements = split_sql_statements($forms_data);
                     foreach ($statements as $statement) {
                         if (!empty($statement)) {
                             $pdo->exec($statement);
