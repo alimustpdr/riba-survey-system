@@ -59,6 +59,9 @@ if (!$school) {
                     <a class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'form-templates.php' ? 'active' : '' ?>" href="/school/form-templates.php">
                         <i class="fas fa-clipboard-list"></i> Form Şablonları
                     </a>
+                    <a class="nav-link <?= basename($_SERVER['PHP_SELF']) === 'riba-class-export.php' ? 'active' : '' ?>" href="/school/riba-class-export.php">
+                        <i class="fas fa-file-excel"></i> RİBA Excel
+                    </a>
                     <hr class="text-white">
                     <a class="nav-link" href="/logout.php">
                         <i class="fas fa-sign-out-alt"></i> Çıkış Yap
