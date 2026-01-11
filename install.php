@@ -14,6 +14,7 @@ if (!isset($_SESSION['csrf_token'])) {
 
 $error = '';
 $success = '';
+$errorIsHtml = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // CSRF koruması
@@ -126,12 +127,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error .= '2. Aynı isimde yeni bir veritabanı oluşturun<br>';
                     $error .= '3. Kurulumu tekrar çalıştırın<br>';
                     $error .= '<br><small>Teknik detay: ' . htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8') . '</small>';
+                    $errorIsHtml = true;
                 } else {
                     $error = 'Veritabanı hatası: ' . htmlspecialchars($errorMsg, ENT_QUOTES, 'UTF-8');
                     $error .= '<br><br><strong>Not:</strong> Eğer kurulum yarıda kaldıysa, veritabanını tamamen silip yeniden oluşturmanız önerilir.';
+                    $errorIsHtml = true;
                 }
             } catch (Exception $e) {
                 $error = 'Hata: ' . htmlspecialchars($e->getMessage(), ENT_QUOTES, 'UTF-8');
+                $errorIsHtml = false;
             }
         }
     }
@@ -165,7 +169,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="install-body">
                 <?php if ($error): ?>
-                    <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> 
+                        <?php if ($errorIsHtml): ?>
+                            <?= $error ?>
+                        <?php else: ?>
+                            <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?>
+                        <?php endif; ?>
+                    </div>
                 <?php endif; ?>
                 <?php if ($success): ?>
                     <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div>
