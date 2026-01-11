@@ -11,18 +11,28 @@
  */
 class XlsxTemplateFiller {
     private string $templatePath;
-    private string $workDir;
 
     /** @var array<string,string> sheetName => worksheet xml relative path (e.g. xl/worksheets/sheet1.xml) */
     private array $sheetMap = [];
 
+    private ?ZipArchive $zip = null;
+    private string $tmpPath = '';
+    /** @var array<string,DOMDocument> */
+    private array $docCache = [];
+    /** @var array<string,bool> */
+    private array $dirtySheets = [];
+
     public function __construct(string $templatePath) {
         $this->templatePath = $templatePath;
-        $this->workDir = sys_get_temp_dir() . '/riba_xlsx_' . bin2hex(random_bytes(8));
     }
 
     public function __destruct() {
-        $this->rrmdir($this->workDir);
+        if ($this->zip instanceof ZipArchive) {
+            @$this->zip->close();
+        }
+        if ($this->tmpPath !== '' && file_exists($this->tmpPath)) {
+            @unlink($this->tmpPath);
+        }
     }
 
     public function open(): void {
@@ -32,21 +42,19 @@ class XlsxTemplateFiller {
         if (!file_exists($this->templatePath)) {
             throw new RuntimeException('XLSX template not found.');
         }
-        if (!is_dir($this->workDir) && !mkdir($this->workDir, 0700, true)) {
-            throw new RuntimeException('Unable to create temp directory.');
+
+        // Work on a temp copy of the template to avoid rebuilding the zip structure
+        $this->tmpPath = sys_get_temp_dir() . '/riba_tpl_' . bin2hex(random_bytes(8)) . '.xlsx';
+        if (!copy($this->templatePath, $this->tmpPath)) {
+            throw new RuntimeException('Unable to copy XLSX template.');
         }
 
-        $zip = new ZipArchive();
-        if ($zip->open($this->templatePath) !== true) {
-            throw new RuntimeException('Unable to open XLSX template.');
+        $this->zip = new ZipArchive();
+        if ($this->zip->open($this->tmpPath) !== true) {
+            throw new RuntimeException('Unable to open XLSX temp file.');
         }
-        if (!$zip->extractTo($this->workDir)) {
-            $zip->close();
-            throw new RuntimeException('Unable to extract XLSX template.');
-        }
-        $zip->close();
 
-        $this->sheetMap = $this->buildSheetMap();
+        $this->sheetMap = $this->buildSheetMapFromZip();
     }
 
     public function hasSheet(string $sheetName): bool {
@@ -57,17 +65,11 @@ class XlsxTemplateFiller {
         if (!$this->hasSheet($sheetName)) {
             throw new InvalidArgumentException('Sheet not found: ' . $sheetName);
         }
-        $relPath = $this->sheetMap[$sheetName];
-        $xmlPath = $this->workDir . '/' . $relPath;
-        if (!file_exists($xmlPath)) {
-            throw new RuntimeException('Worksheet xml not found for sheet: ' . $sheetName);
+        if (!($this->zip instanceof ZipArchive)) {
+            throw new RuntimeException('XLSX is not opened.');
         }
 
-        $doc = new DOMDocument();
-        $doc->preserveWhiteSpace = false;
-        $doc->formatOutput = false;
-        $doc->load($xmlPath);
-
+        $doc = $this->getSheetDoc($sheetName);
         $ns = $doc->documentElement->namespaceURI;
         $xpath = new DOMXPath($doc);
         $xpath->registerNamespace('x', $ns);
@@ -84,7 +86,20 @@ class XlsxTemplateFiller {
         if (!$row) {
             $row = $doc->createElementNS($ns, 'row');
             $row->setAttribute('r', (string)$rowNum);
-            $sheetData->appendChild($row);
+            // Insert rows ordered by r to keep Excel happy
+            $inserted = false;
+            foreach ($xpath->query('//x:worksheet/x:sheetData/x:row') as $existingRow) {
+                /** @var DOMElement $existingRow */
+                $er = (int)$existingRow->getAttribute('r');
+                if ($er > $rowNum) {
+                    $sheetData->insertBefore($row, $existingRow);
+                    $inserted = true;
+                    break;
+                }
+            }
+            if (!$inserted) {
+                $sheetData->appendChild($row);
+            }
         }
 
         // Find/create cell
@@ -122,53 +137,54 @@ class XlsxTemplateFiller {
         }
         $v = $doc->createElementNS($ns, 'v', (string)$value);
         $cell->appendChild($v);
-
-        $doc->save($xmlPath);
+        $this->dirtySheets[$sheetName] = true;
     }
 
     public function saveTo(string $outputPath): void {
         if (!class_exists('ZipArchive')) {
             throw new RuntimeException('PHP ZipArchive extension is required (php-zip).');
         }
-        $zip = new ZipArchive();
-        if ($zip->open($outputPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('Unable to create XLSX output.');
+        if (!($this->zip instanceof ZipArchive)) {
+            throw new RuntimeException('XLSX is not opened.');
         }
 
-        $files = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($this->workDir, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::SELF_FIRST
-        );
-
-        foreach ($files as $file) {
-            /** @var SplFileInfo $file */
-            $filePath = $file->getPathname();
-            $rel = substr($filePath, strlen($this->workDir) + 1);
-            if ($file->isDir()) {
-                $zip->addEmptyDir($rel);
-            } else {
-                $zip->addFile($filePath, $rel);
+        // Write dirty sheets back into the zip
+        foreach (array_keys($this->dirtySheets) as $sheetName) {
+            $path = $this->sheetMap[$sheetName];
+            $doc = $this->getSheetDoc($sheetName);
+            $xml = $doc->saveXML();
+            if ($xml === false) {
+                throw new RuntimeException('Failed to serialize worksheet xml.');
             }
+            $this->zip->setFromString($path, $xml);
         }
 
-        $zip->close();
+        $this->zip->close();
+        $this->zip = null;
+
+        if (!copy($this->tmpPath, $outputPath)) {
+            throw new RuntimeException('Unable to write XLSX output.');
+        }
     }
 
-    private function buildSheetMap(): array {
-        $workbookPath = $this->workDir . '/xl/workbook.xml';
-        $relsPath = $this->workDir . '/xl/_rels/workbook.xml.rels';
-        if (!file_exists($workbookPath) || !file_exists($relsPath)) {
+    private function buildSheetMapFromZip(): array {
+        if (!($this->zip instanceof ZipArchive)) {
+            throw new RuntimeException('XLSX is not opened.');
+        }
+        $workbookXml = $this->zip->getFromName('xl/workbook.xml');
+        $relsXml = $this->zip->getFromName('xl/_rels/workbook.xml.rels');
+        if ($workbookXml === false || $relsXml === false) {
             throw new RuntimeException('Invalid XLSX structure.');
         }
 
         $wb = new DOMDocument();
-        $wb->load($workbookPath);
+        $wb->loadXML($workbookXml);
         $wbNs = $wb->documentElement->namespaceURI;
         $wbXpath = new DOMXPath($wb);
         $wbXpath->registerNamespace('x', $wbNs);
 
         $rels = new DOMDocument();
-        $rels->load($relsPath);
+        $rels->loadXML($relsXml);
         $relsXpath = new DOMXPath($rels);
         $relsXpath->registerNamespace('r', 'http://schemas.openxmlformats.org/package/2006/relationships');
 
@@ -212,21 +228,24 @@ class XlsxTemplateFiller {
         return $n;
     }
 
-    private function rrmdir(string $dir): void {
-        if (!is_dir($dir)) return;
-        $it = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($dir, RecursiveDirectoryIterator::SKIP_DOTS),
-            RecursiveIteratorIterator::CHILD_FIRST
-        );
-        foreach ($it as $file) {
-            /** @var SplFileInfo $file */
-            if ($file->isDir()) {
-                @rmdir($file->getPathname());
-            } else {
-                @unlink($file->getPathname());
-            }
+    private function getSheetDoc(string $sheetName): DOMDocument {
+        if (isset($this->docCache[$sheetName])) {
+            return $this->docCache[$sheetName];
         }
-        @rmdir($dir);
+        if (!($this->zip instanceof ZipArchive)) {
+            throw new RuntimeException('XLSX is not opened.');
+        }
+        $path = $this->sheetMap[$sheetName];
+        $xml = $this->zip->getFromName($path);
+        if ($xml === false) {
+            throw new RuntimeException('Worksheet xml not found in zip: ' . $path);
+        }
+        $doc = new DOMDocument();
+        $doc->preserveWhiteSpace = false;
+        $doc->formatOutput = false;
+        $doc->loadXML($xml);
+        $this->docCache[$sheetName] = $doc;
+        return $doc;
     }
 }
 
