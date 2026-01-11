@@ -115,7 +115,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('refresh:2;url=login.php');
                 
             } catch (PDOException $e) {
-                $error = 'Veritabanı hatası: ' . $e->getMessage();
+                $error_msg = $e->getMessage();
+                
+                // Foreign key hatası için özel mesaj
+                if (strpos($error_msg, '1005') !== false || strpos($error_msg, 'Foreign key constraint') !== false) {
+                    $error = 'Veritabanı tablo oluşturma hatası: ' . $error_msg . 
+                             '<br><br><strong>Çözüm:</strong> Veritabanı kurulumu yarıda kaldıysa, lütfen şu adımları izleyin:' .
+                             '<ol>' .
+                             '<li>CyberPanel veya phpMyAdmin üzerinden <code>' . htmlspecialchars($db_name ?? 'veritabanı', ENT_QUOTES, 'UTF-8') . '</code> veritabanını tamamen silin (DROP DATABASE)</li>' .
+                             '<li>Veritabanını yeniden oluşturun</li>' .
+                             '<li>Bu kurulum sayfasını tekrar çalıştırın</li>' .
+                             '</ol>';
+                } elseif (strpos($error_msg, '1050') !== false || strpos($error_msg, 'Table') !== false && strpos($error_msg, 'already exists') !== false) {
+                    $error = 'Veritabanı tabloları zaten mevcut: ' . $error_msg . 
+                             '<br><br><strong>Çözüm:</strong> Eski tabloları temizlemek için:' .
+                             '<ol>' .
+                             '<li>CyberPanel veya phpMyAdmin üzerinden <code>' . htmlspecialchars($db_name ?? 'veritabanı', ENT_QUOTES, 'UTF-8') . '</code> veritabanındaki tüm tabloları silin</li>' .
+                             '<li>Bu kurulum sayfasını tekrar çalıştırın</li>' .
+                             '</ol>' .
+                             '<small class="text-muted">Alternatif: Veritabanını tamamen silip yeniden oluşturabilirsiniz.</small>';
+                } else {
+                    $error = 'Veritabanı hatası: ' . $error_msg;
+                }
             } catch (Exception $e) {
                 $error = 'Hata: ' . $e->getMessage();
             }
