@@ -1,0 +1,25 @@
+# Config files
+config/
+config.php
+.env
+
+# Installation lock
+.installed
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/

@@ -7,60 +7,118 @@ if (file_exists('config/.installed')) {
     exit;
 }
 
+// CSRF token oluştur
+if (!isset($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+
 $error = '';
 $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $db_host = $_POST['db_host'] ?? 'localhost';
-    $db_name = $_POST['db_name'] ?? '';
-    $db_user = $_POST['db_user'] ?? '';
-    $db_pass = $_POST['db_pass'] ?? '';
-    $admin_email = $_POST['admin_email'] ?? '';
-    $admin_pass = $_POST['admin_pass'] ?? '';
-    $admin_name = $_POST['admin_name'] ?? 'Süper Admin';
-    
-    if (empty($db_name) || empty($db_user) || empty($admin_email) || empty($admin_pass)) {
-        $error = 'Lütfen tüm alanları doldurun!';
+    // CSRF koruması
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        $error = 'Geçersiz form gönderimi!';
     } else {
-        try {
-            // Veritabanı bağlantısı test et
-            $dsn = "mysql:host={$db_host};charset=utf8mb4";
-            $pdo = new PDO($dsn, $db_user, $db_pass);
-            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-            
-            // Veritabanını oluştur
-            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-            $pdo->exec("USE `{$db_name}`");
-            
-            // Tabloları oluştur
-            $schema = file_get_contents('database/schema.sql');
-            $pdo->exec($schema);
-            
-            // Form verilerini yükle
-            $forms_data = file_get_contents('database/forms_data.sql');
-            $pdo->exec($forms_data);
-            
-            // Süper admin oluştur
-            $hashed_pass = password_hash($admin_pass, PASSWORD_DEFAULT);
-            $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, status, created_at) VALUES (?, ?, ?, 'super_admin', 'active', NOW())");
-            $stmt->execute([$admin_name, $admin_email, $hashed_pass]);
-            
-            // .env dosyası oluştur
-            $env_content = "DB_HOST={$db_host}\n";
-            $env_content .= "DB_NAME={$db_name}\n";
-            $env_content .= "DB_USER={$db_user}\n";
-            $env_content .= "DB_PASS={$db_pass}\n";
-            $env_content .= "APP_URL=" . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . "://{$_SERVER['HTTP_HOST']}\n";
-            
-            if (!is_dir('config')) mkdir('config', 0755, true);
-            file_put_contents('config/.env', $env_content);
-            file_put_contents('config/.installed', date('Y-m-d H:i:s'));
-            
-            $success = 'Kurulum başarıyla tamamlandı! Yönlendiriliyorsunuz...';
-            header('refresh:2;url=login.php');
-            
-        } catch (PDOException $e) {
-            $error = 'Veritabanı hatası: ' . $e->getMessage();
+        $db_host = $_POST['db_host'] ?? 'localhost';
+        $db_name = $_POST['db_name'] ?? '';
+        $db_user = $_POST['db_user'] ?? '';
+        $db_pass = $_POST['db_pass'] ?? '';
+        $db_exists = isset($_POST['db_exists']) && $_POST['db_exists'] === '1';
+        $admin_email = filter_var($_POST['admin_email'] ?? '', FILTER_SANITIZE_EMAIL);
+        $admin_pass = $_POST['admin_pass'] ?? '';
+        $admin_name = htmlspecialchars($_POST['admin_name'] ?? 'Süper Admin', ENT_QUOTES, 'UTF-8');
+        
+        if (empty($db_name) || empty($db_user) || empty($admin_email) || empty($admin_pass)) {
+            $error = 'Lütfen tüm zorunlu alanları doldurun!';
+        } elseif (strlen($admin_pass) < 6) {
+            $error = 'Şifre en az 6 karakter olmalıdır!';
+        } elseif (!filter_var($admin_email, FILTER_VALIDATE_EMAIL)) {
+            $error = 'Geçerli bir e-posta adresi giriniz!';
+        } else {
+            try {
+                // Veritabanı bağlantısı test et
+                if ($db_exists) {
+                    // DB zaten var, direkt bağlan
+                    $dsn = "mysql:host={$db_host};dbname={$db_name};charset=utf8mb4";
+                    $pdo = new PDO($dsn, $db_user, $db_pass);
+                } else {
+                    // DB yoksa oluştur
+                    $dsn = "mysql:host={$db_host};charset=utf8mb4";
+                    $pdo = new PDO($dsn, $db_user, $db_pass);
+                    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                    
+                    // Veritabanını oluştur
+                    $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                    $pdo->exec("USE `{$db_name}`");
+                }
+                
+                $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                
+                if (!$db_exists) {
+                    $pdo->exec("USE `{$db_name}`");
+                }
+                
+                // Tabloları oluştur
+                $schema = file_get_contents('database/schema.sql');
+                // SQL komutlarını noktalı virgüle göre ayır ve tek tek çalıştır
+                $statements = array_filter(array_map('trim', explode(';', $schema)));
+                foreach ($statements as $statement) {
+                    if (!empty($statement)) {
+                        $pdo->exec($statement);
+                    }
+                }
+                
+                // Form verilerini yükle
+                if (file_exists('database/forms_data.sql')) {
+                    $forms_data = file_get_contents('database/forms_data.sql');
+                    $statements = array_filter(array_map('trim', explode(';', $forms_data)));
+                    foreach ($statements as $statement) {
+                        if (!empty($statement)) {
+                            $pdo->exec($statement);
+                        }
+                    }
+                }
+                
+                // Süper admin oluştur
+                $hashed_pass = password_hash($admin_pass, PASSWORD_DEFAULT);
+                $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, status, created_at) VALUES (?, ?, ?, 'super_admin', 'active', NOW())");
+                $stmt->execute([$admin_name, $admin_email, $hashed_pass]);
+                
+                // config.php dosyası oluştur
+                $config_content = "<?php\n";
+                $config_content .= "// Veritabanı Ayarları\n";
+                $config_content .= "define('DB_HOST', '{$db_host}');\n";
+                $config_content .= "define('DB_NAME', '{$db_name}');\n";
+                $config_content .= "define('DB_USER', '{$db_user}');\n";
+                $config_content .= "define('DB_PASS', '" . addslashes($db_pass) . "');\n\n";
+                $config_content .= "// Uygulama Ayarları\n";
+                $config_content .= "define('APP_URL', '" . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . "://{$_SERVER['HTTP_HOST']}');\n";
+                $config_content .= "define('BASE_PATH', dirname(__FILE__) . '/..');\n\n";
+                $config_content .= "// Güvenlik Ayarları\n";
+                $config_content .= "define('SESSION_LIFETIME', 3600); // 1 saat\n";
+                $config_content .= "?>\n";
+                
+                if (!is_dir('config')) {
+                    mkdir('config', 0755, true);
+                }
+                
+                file_put_contents('config/config.php', $config_content);
+                file_put_contents('config/.installed', date('Y-m-d H:i:s'));
+                
+                // Güvenlik için config dizinini koru
+                if (!file_exists('config/.htaccess')) {
+                    file_put_contents('config/.htaccess', "Deny from all\n");
+                }
+                
+                $success = 'Kurulum başarıyla tamamlandı! Yönlendiriliyorsunuz...';
+                header('refresh:2;url=login.php');
+                
+            } catch (PDOException $e) {
+                $error = 'Veritabanı hatası: ' . $e->getMessage();
+            } catch (Exception $e) {
+                $error = 'Hata: ' . $e->getMessage();
+            }
         }
     }
 }
@@ -93,13 +151,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             </div>
             <div class="install-body">
                 <?php if ($error): ?>
-                    <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?= $error ?></div>
+                    <div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div>
                 <?php endif; ?>
                 <?php if ($success): ?>
-                    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= $success ?></div>
+                    <div class="alert alert-success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($success, ENT_QUOTES, 'UTF-8') ?></div>
                 <?php endif; ?>
                 
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($_SESSION['csrf_token'], ENT_QUOTES, 'UTF-8') ?>">
+                    
                     <h5 class="mb-3"><i class="fas fa-database text-primary"></i> Veritabanı Bilgileri</h5>
                     
                     <div class="mb-3">
@@ -110,7 +170,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="mb-3">
                         <label class="form-label">Veritabanı Adı</label>
                         <input type="text" name="db_name" class="form-control" placeholder="riba_system" required>
-                        <small class="text-muted">Yoksa otomatik oluşturulacak</small>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="db_exists" value="1" id="db_exists">
+                            <label class="form-check-label" for="db_exists">
+                                Veritabanı CyberPanel'den zaten oluşturuldu
+                            </label>
+                        </div>
+                        <small class="text-muted">CyberPanel'de veritabanını zaten oluşturduysanız bu seçeneği işaretleyin</small>
                     </div>
                     
                     <div class="row">
