@@ -3,7 +3,11 @@
 
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_httponly', 1);
-    ini_set('session.cookie_secure', isset($_SERVER['HTTPS']) ? 1 : 0);
+    $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (!empty($_SERVER['SERVER_PORT']) && (int)$_SERVER['SERVER_PORT'] === 443);
+    ini_set('session.cookie_secure', $isHttps ? 1 : 0);
+    // Helps mitigate CSRF while keeping UX (works well for typical form POSTs)
+    ini_set('session.cookie_samesite', 'Lax');
     ini_set('session.use_strict_mode', 1);
     session_start();
 }
