@@ -187,4 +187,4 @@ CREATE TABLE IF NOT EXISTS settings (
 INSERT INTO settings (school_id, setting_key, setting_value) VALUES 
 (NULL, 'gender_field_enabled', 'true'),
 (NULL, 'system_name', 'RİBA Anket Yönetim Sistemi')
-ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value);
+ON DUPLICATE KEY UPDATE setting_value = setting_value;

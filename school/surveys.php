@@ -122,8 +122,21 @@ function copyLink(token) {
 function copyToClipboard() {
     const linkInput = document.getElementById('surveyLink');
     linkInput.select();
-    document.execCommand('copy');
-    alert('Link kopyalandı!');
+    
+    // Modern Clipboard API ile kopyalama
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(linkInput.value).then(() => {
+            alert('Link kopyalandı!');
+        }).catch(() => {
+            // Fallback to execCommand
+            document.execCommand('copy');
+            alert('Link kopyalandı!');
+        });
+    } else {
+        // Fallback for older browsers
+        document.execCommand('copy');
+        alert('Link kopyalandı!');
+    }
 }
 </script>
 

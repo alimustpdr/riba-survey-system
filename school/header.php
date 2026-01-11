@@ -4,7 +4,7 @@ require_once __DIR__ . '/../includes/db.php';
 
 require_school_admin();
 
-$user = get_current_user();
+$user = get_logged_in_user();
 $page_title = $page_title ?? 'Dashboard';
 
 // Okul bilgisini al

@@ -99,7 +99,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         .option-label { cursor: pointer; padding: 12px; border: 2px solid #dee2e6; border-radius: 8px; transition: all 0.3s; display: block; margin-bottom: 10px; }
         .option-label:hover { background: #f8f9fa; border-color: #667eea; }
         .option-label input[type="radio"]:checked + .option-text { font-weight: bold; }
-        .option-label:has(input:checked) { background: #e7f3ff; border-color: #667eea; }
+        /* Checked state styling with fallback */
+        .option-label.checked { background: #e7f3ff; border-color: #667eea; }
     </style>
 </head>
 <body>
@@ -185,5 +186,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Add checked class to option labels for better browser compatibility
+        document.addEventListener('DOMContentLoaded', function() {
+            const radioInputs = document.querySelectorAll('input[type="radio"]');
+            radioInputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    // Remove checked class from all labels with same name
+                    const name = this.name;
+                    document.querySelectorAll(`input[name="${name}"]`).forEach(radio => {
+                        radio.closest('.option-label').classList.remove('checked');
+                    });
+                    // Add checked class to selected label
+                    if (this.checked) {
+                        this.closest('.option-label').classList.add('checked');
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>
