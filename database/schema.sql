@@ -17,14 +17,17 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS schools (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    slug VARCHAR(255) UNIQUE NOT NULL,
     user_id INT NOT NULL,
     package_id INT NULL,
+    gender_field_enabled TINYINT(1) DEFAULT 0,
     status ENUM('active', 'inactive', 'expired') DEFAULT 'active',
     expire_date DATE NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_status (status)
+    INDEX idx_status (status),
+    INDEX idx_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Paketler Tablosu (Süper Admin Ayarlar)
@@ -66,38 +69,69 @@ CREATE TABLE IF NOT EXISTS questions (
     INDEX idx_template (form_template_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Sınıflar Tablosu
+CREATE TABLE IF NOT EXISTS classes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    school_id INT NOT NULL,
+    name VARCHAR(50) NOT NULL,
+    kademe ENUM('okuloncesi', 'ilkokul', 'ortaokul', 'lise') NOT NULL,
+    status ENUM('active', 'inactive') DEFAULT 'active',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_class (school_id, name),
+    INDEX idx_school (school_id),
+    INDEX idx_kademe (kademe)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- Anketler Tablosu
 CREATE TABLE IF NOT EXISTS surveys (
     id INT AUTO_INCREMENT PRIMARY KEY,
     school_id INT NOT NULL,
-    kademe ENUM('okuloncesi', 'ilkokul', 'ortaokul', 'lise') NOT NULL,
-    role ENUM('ogrenci', 'veli', 'ogretmen') NOT NULL,
+    form_template_id INT NOT NULL,
     title VARCHAR(255) NOT NULL,
+    description TEXT NULL,
     link_token VARCHAR(64) UNIQUE NOT NULL,
+    target_all_classes TINYINT(1) DEFAULT 0,
     status ENUM('active', 'closed') DEFAULT 'active',
-    target_count INT DEFAULT 0,
     response_count INT DEFAULT 0,
     created_by INT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_at TIMESTAMP NULL,
     FOREIGN KEY (school_id) REFERENCES schools(id) ON DELETE CASCADE,
+    FOREIGN KEY (form_template_id) REFERENCES form_templates(id),
     FOREIGN KEY (created_by) REFERENCES users(id),
     INDEX idx_token (link_token),
     INDEX idx_school (school_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Anket-Sınıf İlişkisi Tablosu
+CREATE TABLE IF NOT EXISTS survey_classes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    survey_id INT NOT NULL,
+    class_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_survey_class (survey_id, class_id),
+    INDEX idx_survey (survey_id),
+    INDEX idx_class (class_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Cevaplar Tablosu
 CREATE TABLE IF NOT EXISTS responses (
     id INT AUTO_INCREMENT PRIMARY KEY,
     survey_id INT NOT NULL,
-    class_name VARCHAR(50) NULL,
+    class_id INT NULL,
+    gender ENUM('male', 'female', 'other') NULL,
     ip_address VARCHAR(45) NULL,
     user_agent TEXT NULL,
     answers JSON NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES classes(id) ON DELETE SET NULL,
     INDEX idx_survey (survey_id),
-    INDEX idx_class (class_name)
+    INDEX idx_class (class_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Sınıf Sonuçları

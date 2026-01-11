@@ -15,6 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $db_name = $_POST['db_name'] ?? '';
     $db_user = $_POST['db_user'] ?? '';
     $db_pass = $_POST['db_pass'] ?? '';
+    $db_exists = isset($_POST['db_exists']) && $_POST['db_exists'] === '1';
     $admin_email = $_POST['admin_email'] ?? '';
     $admin_pass = $_POST['admin_pass'] ?? '';
     $admin_name = $_POST['admin_name'] ?? 'Süper Admin';
@@ -24,13 +25,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         try {
             // Veritabanı bağlantısı test et
-            $dsn = "mysql:host={$db_host};charset=utf8mb4";
-            $pdo = new PDO($dsn, $db_user, $db_pass);
-            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            if ($db_exists) {
+                // Veritabanı zaten var, direkt bağlan
+                $dsn = "mysql:host={$db_host};dbname={$db_name};charset=utf8mb4";
+                $pdo = new PDO($dsn, $db_user, $db_pass);
+            } else {
+                // Veritabanını oluştur
+                $dsn = "mysql:host={$db_host};charset=utf8mb4";
+                $pdo = new PDO($dsn, $db_user, $db_pass);
+                $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+                $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+                $pdo->exec("USE `{$db_name}`");
+            }
             
-            // Veritabanını oluştur
-            $pdo->exec("CREATE DATABASE IF NOT EXISTS `{$db_name}` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
-            $pdo->exec("USE `{$db_name}`");
+            $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
             
             // Tabloları oluştur
             $schema = file_get_contents('database/schema.sql');
@@ -45,16 +53,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $pdo->prepare("INSERT INTO users (name, email, password, role, status, created_at) VALUES (?, ?, ?, 'super_admin', 'active', NOW())");
             $stmt->execute([$admin_name, $admin_email, $hashed_pass]);
             
-            // .env dosyası oluştur
-            $env_content = "DB_HOST={$db_host}\n";
-            $env_content .= "DB_NAME={$db_name}\n";
-            $env_content .= "DB_USER={$db_user}\n";
-            $env_content .= "DB_PASS={$db_pass}\n";
-            $env_content .= "APP_URL=" . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . "://{$_SERVER['HTTP_HOST']}\n";
+            // config.php dosyası oluştur
+            $config_content = "<?php\n";
+            $config_content .= "// Database Configuration\n";
+            $config_content .= "define('DB_HOST', '{$db_host}');\n";
+            $config_content .= "define('DB_NAME', '{$db_name}');\n";
+            $config_content .= "define('DB_USER', '{$db_user}');\n";
+            $config_content .= "define('DB_PASS', " . var_export($db_pass, true) . ");\n";
+            $config_content .= "define('APP_URL', '" . (isset($_SERVER['HTTPS']) ? 'https' : 'http') . "://{$_SERVER['HTTP_HOST']}');\n";
+            $config_content .= "define('APP_NAME', 'RİBA Anket Yönetim Sistemi');\n";
             
             if (!is_dir('config')) mkdir('config', 0755, true);
-            file_put_contents('config/.env', $env_content);
+            file_put_contents('config/config.php', $config_content);
             file_put_contents('config/.installed', date('Y-m-d H:i:s'));
+            
+            // storage dizinlerini oluştur
+            if (!is_dir('storage')) mkdir('storage', 0755, true);
+            if (!is_dir('storage/logs')) mkdir('storage/logs', 0755, true);
             
             $success = 'Kurulum başarıyla tamamlandı! Yönlendiriliyorsunuz...';
             header('refresh:2;url=login.php');
@@ -110,7 +125,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <div class="mb-3">
                         <label class="form-label">Veritabanı Adı</label>
                         <input type="text" name="db_name" class="form-control" placeholder="riba_system" required>
-                        <small class="text-muted">Yoksa otomatik oluşturulacak</small>
+                    </div>
+                    
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" name="db_exists" value="1" class="form-check-input" id="dbExists">
+                        <label class="form-check-label" for="dbExists">
+                            Veritabanı zaten mevcut (CREATE DATABASE yetkisi olmayan kullanıcılar için)
+                        </label>
+                        <small class="d-block text-muted">CyberPanel'de veritabanını önceden oluşturduysanız bu seçeneği işaretleyin</small>
                     </div>
                     
                     <div class="row">
