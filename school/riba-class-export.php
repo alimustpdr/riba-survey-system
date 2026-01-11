@@ -81,119 +81,6 @@ foreach ($surveys as $s) {
 
 $csrf_token = generate_csrf_token();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $csrf = $_POST['csrf_token'] ?? '';
-    if (!verify_csrf_token($csrf)) {
-        set_flash_message('Geçersiz form gönderimi!', 'danger');
-        header('Location: riba-class-export.php');
-        exit;
-    }
-
-    $class_id = (int)($_POST['class_id'] ?? 0);
-    $kademe = $_POST['kademe'] ?? '';
-    $ogrenci_survey_id = (int)($_POST['ogrenci_survey_id'] ?? 0);
-    $veli_survey_id = (int)($_POST['veli_survey_id'] ?? 0);
-    $ogretmen_survey_id = (int)($_POST['ogretmen_survey_id'] ?? 0);
-
-    $stmt = $pdo->prepare("SELECT * FROM classes WHERE id = ? AND school_id = ? AND status = 'active'");
-    $stmt->execute([$class_id, $user['school_id']]);
-    $class = $stmt->fetch();
-    if (!$class) {
-        set_flash_message('Sınıf bulunamadı!', 'danger');
-        header('Location: riba-class-export.php');
-        exit;
-    }
-    if ($kademe !== $class['kademe']) {
-        // keep simple: enforce same kademe as class
-        $kademe = $class['kademe'];
-    }
-
-    // Determine required roles
-    $needStudent = ($kademe !== 'okuloncesi');
-    if ($needStudent && $ogrenci_survey_id <= 0) {
-        set_flash_message('Öğrenci anketini seçmelisiniz!', 'danger');
-        header('Location: riba-class-export.php');
-        exit;
-    }
-    if ($veli_survey_id <= 0 || $ogretmen_survey_id <= 0) {
-        set_flash_message('Veli ve öğretmen anketlerini seçmelisiniz!', 'danger');
-        header('Location: riba-class-export.php');
-        exit;
-    }
-
-    // Fetch question maps for each selected survey
-    $questionIdToNumber = [];
-    $roleToSurveyId = [
-        'ogrenci' => $ogrenci_survey_id,
-        'veli' => $veli_survey_id,
-        'ogretmen' => $ogretmen_survey_id,
-    ];
-    foreach ($roleToSurveyId as $role => $sid) {
-        if ($sid <= 0) continue;
-        $stmt = $pdo->prepare("
-            SELECT q.id, q.question_number
-            FROM surveys s
-            JOIN questions q ON q.form_template_id = s.form_template_id
-            WHERE s.id = ? AND s.school_id = ?
-        ");
-        $stmt->execute([$sid, $user['school_id']]);
-        $rows = $stmt->fetchAll();
-        foreach ($rows as $r) {
-            $questionIdToNumber[$role][(int)$r['id']] = (int)$r['question_number'];
-        }
-    }
-
-    // Fetch responses for each survey filtered by class_name
-    $responsesByRole = [];
-    foreach ($roleToSurveyId as $role => $sid) {
-        if ($sid <= 0) continue;
-        $stmt = $pdo->prepare("
-            SELECT id, answers
-            FROM responses
-            WHERE survey_id = ? AND class_name = ?
-            ORDER BY created_at ASC
-        ");
-        $stmt->execute([$sid, $class['name']]);
-        $responsesByRole[$role] = $stmt->fetchAll();
-    }
-
-    // Fill template (requires php-zip for ZipArchive)
-    if (!class_exists('ZipArchive')) {
-        set_flash_message('Excel export için PHP Zip (php-zip) eklentisi gerekli. Sunucuda etkinleştirin.', 'danger');
-        header('Location: riba-class-export.php');
-        exit;
-    }
-
-    // Fill template
-    $templatePath = kademe_template_path($kademe);
-    $xlsx = new XlsxTemplateFiller($templatePath);
-    $xlsx->open();
-
-    if ($needStudent) {
-        fill_role_sheet($xlsx, 'ogrenci', $responsesByRole['ogrenci'] ?? [], $questionIdToNumber['ogrenci'] ?? []);
-    }
-    fill_role_sheet($xlsx, 'veli', $responsesByRole['veli'] ?? [], $questionIdToNumber['veli'] ?? []);
-    fill_role_sheet($xlsx, 'ogretmen', $responsesByRole['ogretmen'] ?? [], $questionIdToNumber['ogretmen'] ?? []);
-
-    $out = sys_get_temp_dir() . '/riba_sinif_' . bin2hex(random_bytes(6)) . '.xlsx';
-    $xlsx->saveTo($out);
-
-    $safeClass = preg_replace('/[^a-zA-Z0-9_-]+/', '_', (string)$class['name']);
-    $filename = 'riba_' . $kademe . '_sinif_sonuc_' . $safeClass . '.xlsx';
-
-    // Prevent any buffered output from corrupting the XLSX
-    while (ob_get_level() > 0) {
-        @ob_end_clean();
-    }
-
-    header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    header('Content-Disposition: attachment; filename="' . $filename . '"');
-    header('Content-Length: ' . filesize($out));
-    readfile($out);
-    @unlink($out);
-    exit;
-}
-
 ?>
 
 <div class="row">
@@ -208,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     Excel'i indirip açtığınızda şablonun kendi formülleri sonucu hesaplayacaktır.
                 </div>
 
-                <form method="POST">
+                <form method="POST" action="/school/riba-class-export-download.php">
                     <input type="hidden" name="csrf_token" value="<?= e($csrf_token) ?>">
 
                     <div class="mb-3">
